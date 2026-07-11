@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Skim — AI PDF Summarizer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #FAF8F3;
+    --paper-card: #FFFFFF;
+    --ink: #1C1B18;
+    --ink-soft: #55524A;
+    --highlight: #F4D35E;
+    --highlight-soft: #FBEAA6;
+    --sage: #8B9A7D;
+    --border: #E5E0D5;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(28,27,24,0.04) 1px, transparent 0);
+    background-size: 24px 24px;
+    color: var(--ink);
+  }
+
+  .font-serif-display {
+    font-family: 'Source Serif 4', serif;
+  }
+
+  /* Highlighter marker effect */
+  .marker-highlight {
+    position: relative;
+    display: inline-block;
+  }
+  .marker-highlight::before {
+    content: "";
+    position: absolute;
+    left: -4px; right: -4px; bottom: 2px;
+    height: 0.55em;
+    background: var(--highlight);
+    transform: rotate(-1deg);
+    z-index: -1;
+    border-radius: 2px 6px 3px 8px / 4px 2px 6px 3px;
+  }
+
+  .paper-card {
+    background: var(--paper-card);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(28,27,24,0.04), 0 8px 24px -12px rgba(28,27,24,0.08);
+  }
+
+  .field:focus-within {
+    border-color: var(--sage);
+    box-shadow: 0 0 0 3px rgba(139,154,125,0.15);
+  }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #302E28;
+    transform: translateY(-1px);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .result-marker {
+    border-left: 3px solid var(--highlight);
+    padding-left: 1rem;
+  }
+
+  ::selection {
+    background: var(--highlight-soft);
+  }
+
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .pulse-soft {
+    animation: pulse-soft 1.4s ease-in-out infinite;
+  }
+</style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="py-6 px-6">
+    <div class="max-w-2xl mx-auto flex items-baseline justify-between">
+      <h1 class="font-serif-display text-2xl font-semibold tracking-tight">
+        <span class="marker-highlight">Skim</span>
+      </h1>
+      <span class="text-xs text-[var(--ink-soft)]">for students & teachers</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex-1 max-w-2xl mx-auto w-full px-6 py-6">
+
+    <!-- Intro -->
+    <p class="font-serif-display text-lg text-[var(--ink-soft)] mb-8 leading-snug">
+      Upload a PDF, tell Skim what matters to you, and get a clear
+      <span class="marker-highlight font-medium text-[var(--ink)]">page-by-page summary</span>
+      back in seconds.
+    </p>
+
+    <!-- Upload form -->
+    <section class="paper-card rounded-2xl p-6">
+      <form id="summarize-form" class="space-y-5">
+
+        <!-- File input -->
+        <div>
+          <label class="block text-sm font-medium mb-2" for="pdf-file">
+            Upload PDF <span class="text-[var(--ink-soft)] font-normal">· up to 5MB, first 10 pages</span>
+          </label>
+          <input
+            type="file"
+            id="pdf-file"
+            name="file"
+            accept="application/pdf"
+            required
+            class="field block w-full text-sm border border-[var(--border)] rounded-xl cursor-pointer bg-[var(--paper)] focus:outline-none p-3 transition"
+          />
+        </div>
+
+        <!-- Prompt input -->
+        <div>
+          <label class="block text-sm font-medium mb-2" for="prompt">
+            What do you want extracted?
+          </label>
+          <input
+            type="text"
+            id="prompt"
+            name="prompt"
+            placeholder="e.g. Extract the top points on electrolysis"
+            class="field block w-full text-sm border border-[var(--border)] rounded-xl p-3 focus:outline-none bg-[var(--paper)] transition"
+          />
+        </div>
+
+        <button
+          type="submit"
+          id="submit-btn"
+          class="btn-primary w-full text-sm font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+        >
+          <span id="submit-btn-text">Summarize</span>
+        </button>
+      </form>
+
+      <!-- Error -->
+      <p id="error-msg" class="hidden text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-4"></p>
+    </section>
+
+    <!-- Result -->
+    <section id="result-section" class="hidden mt-6 paper-card rounded-2xl p-6">
+      <div class="flex items-start justify-between mb-1 gap-3">
+        <h2 class="font-serif-display text-lg font-semibold truncate" id="result-filename"></h2>
+        <div class="flex gap-2 shrink-0">
+          <button id="copy-btn" class="text-xs border border-[var(--border)] rounded-lg px-3 py-1.5 hover:bg-[var(--paper)] transition">
+            Copy
+          </button>
+          <button id="download-btn" class="text-xs border border-[var(--border)] rounded-lg px-3 py-1.5 hover:bg-[var(--paper)] transition">
+            Download
+          </button>
+        </div>
+      </div>
+      <p id="result-meta" class="text-xs text-[var(--ink-soft)] mb-4"></p>
+      <div id="result-content" class="result-marker text-sm leading-relaxed whitespace-pre-wrap text-[var(--ink)]"></div>
+    </section>
+
+    <!-- History -->
+    <section class="mt-10">
+      <h2 class="text-xs font-semibold text-[var(--ink-soft)] uppercase tracking-wider mb-3">Past summaries</h2>
+      <div id="history-list" class="space-y-2"></div>
+    </section>
+
+  </main>
+
+  <footer class="text-center text-xs text-[var(--ink-soft)] py-8">
+    Built with Flask, Firecrawl & Mistral
+  </footer>
+
+  <script>
+    // ---- CONFIG ----
+    const API_BASE_URL = ""; // same-origin, Flask serves this file directly
+    const STORAGE_KEY = "skim_summaries";
+
+    // ---- ELEMENTS ----
+    const form = document.getElementById("summarize-form");
+    const submitBtn = document.getElementById("submit-btn");
+    const submitBtnText = document.getElementById("submit-btn-text");
+    const errorMsg = document.getElementById("error-msg");
+    const resultSection = document.getElementById("result-section");
+    const resultFilename = document.getElementById("result-filename");
+    const resultMeta = document.getElementById("result-meta");
+    const resultContent = document.getElementById("result-content");
+    const copyBtn = document.getElementById("copy-btn");
+    const downloadBtn = document.getElementById("download-btn");
+    const historyList = document.getElementById("history-list");
+
+    let currentSummary = null;
+
+    // ---- LOCAL STORAGE HELPERS ----
+    function getHistory() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveToHistory(entry) {
+      const history = getHistory();
+      history.unshift(entry);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 50)));
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const history = getHistory();
+      historyList.innerHTML = "";
+
+      if (history.length === 0) {
+        historyList.innerHTML = `<p class="text-sm text-[var(--ink-soft)]">No summaries yet — your first one will show up here.</p>`;
+        return;
+      }
+
+      history.forEach((entry) => {
+        const item = document.createElement("button");
+        item.className =
+          "w-full text-left paper-card rounded-xl px-4 py-3 hover:bg-[var(--paper)] transition";
+        item.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-sm font-medium truncate">${escapeHtml(entry.filename)}</span>
+            <span class="text-xs text-[var(--ink-soft)] shrink-0">${new Date(entry.createdAt).toLocaleDateString()}</span>
+          </div>
+          <p class="text-xs text-[var(--ink-soft)] truncate mt-1">${escapeHtml(entry.prompt)}</p>
+        `;
+        item.addEventListener("click", () => showResult(entry));
+        historyList.appendChild(item);
+      });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ---- RESULT DISPLAY ----
+    function showResult(entry) {
+      currentSummary = entry;
+      resultFilename.textContent = entry.filename;
+
+      if (entry.totalPages && entry.pagesParsed && entry.totalPages > entry.pagesParsed) {
+        resultMeta.textContent = `Summarized first ${entry.pagesParsed} of ${entry.totalPages} pages`;
+        resultMeta.classList.remove("hidden");
+      } else {
+        resultMeta.textContent = "";
+        resultMeta.classList.add("hidden");
+      }
+
+      resultContent.textContent = entry.summary;
+      resultSection.classList.remove("hidden");
+      resultSection.scrollIntoView({ behavior: "smooth" });
+    }
+
+    // ---- FORM SUBMIT ----
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorMsg.classList.add("hidden");
+
+      const fileInput = document.getElementById("pdf-file");
+      const promptInput = document.getElementById("prompt");
+
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const prompt = promptInput.value.trim() || "Summarize the key points.";
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("prompt", prompt);
+
+      submitBtn.disabled = true;
+      submitBtnText.textContent = "Summarizing…";
+      submitBtn.classList.add("pulse-soft");
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/summarize`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || "Something went wrong");
+        }
+
+        const entry = {
+          filename: data.filename,
+          prompt: data.prompt,
+          summary: data.summary,
+          pagesParsed: data.pagesParsed,
+          totalPages: data.totalPages,
+          createdAt: new Date().toISOString(),
+        };
+
+        saveToHistory(entry);
+        showResult(entry);
+        form.reset();
+
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.classList.remove("hidden");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtnText.textContent = "Summarize";
+        submitBtn.classList.remove("pulse-soft");
+      }
+    });
+
+    // ---- COPY / DOWNLOAD ----
+    copyBtn.addEventListener("click", () => {
+      if (!currentSummary) return;
+      navigator.clipboard.writeText(currentSummary.summary);
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => (copyBtn.textContent = "Copy"), 1500);
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      if (!currentSummary) return;
+      const blob = new Blob([currentSummary.summary], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${currentSummary.filename.replace(".pdf", "")}-summary.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // ---- INIT ----
+    renderHistory();
+  </script>
+
+</body>
+</html>
+
